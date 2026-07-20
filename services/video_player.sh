@@ -20,4 +20,5 @@ exec mpv --idle=yes \
     --dscale=bilinear \
     --video-sync=display-resample \
     --audio-device=alsa/hdmi:CARD=vc4hdmi1,DEV=0 \
+    --quiet \
     --msg-level=vo=error

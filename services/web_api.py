@@ -5,8 +5,12 @@ from flask import Flask, jsonify, request, send_from_directory
 from mpv_ipc import MpvIPC, MpvIPCError
 
 MEDIA_DIR = Path(__file__).resolve().parent.parent / "media"
-SOCKETS = {"video": "/tmp/vtg-video.sock", "audio": "/tmp/vtg-audio.sock"}
+SOCKETS = {"video": "/tmp/vtg-video.sock", "audio": "/tmp/vtg-audio.sock", "image": "/tmp/vtg-image.sock"}
 MEDIA_FOLDERS = {"video": MEDIA_DIR / "video", "audio": MEDIA_DIR / "audio"}
+IMAGE_FOLDERS = {
+    "1080p": MEDIA_DIR / "images_1080p",
+    "4k": MEDIA_DIR / "images_4k",
+}
 
 app = Flask(__name__, static_folder=str(Path(__file__).resolve().parent / "static"))
 
@@ -69,6 +73,53 @@ def control(target, action):
     try:
         mpv = get_mpv(target)
         getattr(mpv, actions[action])()
+        mpv.close()
+        return jsonify({"success": True})
+    except MpvIPCError as e:
+        return jsonify({"success": False, "message": str(e)}), 503
+
+@app.route("/api/media/<target>")
+def list_media(target):
+    if target == "image":
+        folder = IMAGE_FOLDERS.get(request.args.get("resolution", "1080p"))
+    else:
+        folder = MEDIA_FOLDERS.get(target)
+    files = sorted(f.name for f in folder.iterdir() if f.is_file()) if folder and folder.exists() else []
+    return jsonify({"success": True, "files": files})
+
+@app.route("/api/load/<target>", methods=["POST"])
+def load(target):
+    data = request.json or {}
+    mode = data.get("mode", "folder")
+    folder = IMAGE_FOLDERS.get(data.get("resolution", "1080p")) if target == "image" else MEDIA_FOLDERS.get(target)
+    if not folder:
+        return jsonify({"success": False, "message": "Unknown target/resolution"}), 400
+    try:
+        mpv = get_mpv(target)
+        if mode == "single":
+            filename = data.get("filename")
+            if not filename:
+                mpv.close()
+                return jsonify({"success": False, "message": "No filename given"}), 400
+            mpv.loadfile(str(folder / filename))
+            mpv.close()
+            return jsonify({"success": True})
+        files = sorted(f for f in folder.iterdir() if f.is_file())
+        mpv.load_playlist([str(f) for f in files])
+        mpv.close()
+        return jsonify({"success": True, "count": len(files)})
+    except MpvIPCError as e:
+        return jsonify({"success": False, "message": str(e)}), 503
+
+@app.route("/api/speed/image", methods=["POST"])
+def set_image_speed():
+    try:
+        seconds = float((request.json or {}).get("seconds"))
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": "Invalid seconds value"}), 400
+    try:
+        mpv = get_mpv("image")
+        mpv.set_property("image-display-duration", seconds)
         mpv.close()
         return jsonify({"success": True})
     except MpvIPCError as e:

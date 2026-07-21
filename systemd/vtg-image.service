@@ -1,0 +1,14 @@
+[Unit]
+Description=VTG Image Player
+After=network.target
+
+[Service]
+Type=simple
+User=vtg
+WorkingDirectory=/home/vtg/vtg_gen2/services
+ExecStart=/home/vtg/vtg_gen2/services/image_player.sh
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

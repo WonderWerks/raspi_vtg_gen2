@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VTG Test Control</title>
+<style>
+  body { background:#111; color:#eee; font-family: system-ui, sans-serif; padding:24px; }
+  h1 { font-size:22px; margin-bottom:24px; }
+  .panel { background:#1c1c1c; border:1px solid #333; border-radius:10px; padding:20px; margin-bottom:20px; }
+  h2 { font-size:18px; margin:0 0 12px; }
+  .nowplaying { font-size:14px; color:#9fd; margin-bottom:14px; min-height:20px; }
+  select { width:100%; padding:8px; margin-bottom:10px; background:#222; color:#eee; border:1px solid #444; border-radius:6px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; }
+  button { flex:1; min-width:70px; padding:10px; border:none; border-radius:6px; background:#333; color:#eee; cursor:pointer; font-size:14px; }
+  button:hover { background:#444; }
+  button.primary { background:#2a6; }
+  button.primary:hover { background:#3b7; }
+  button.danger { background:#a33; }
+  button.danger:hover { background:#b44; }
+  .err { color:#f77; font-size:13px; margin-top:8px; }
+</style>
+</head>
+<body>
+<h1>VTG Test Control</h1>
+<div id="panels"></div>
+
+<script>
+const targets = [
+  { id: "video", label: "Video" },
+  { id: "audio", label: "Audio Test" }
+];
+
+function render() {
+  document.getElementById("panels").innerHTML = targets.map(t => `
+    <div class="panel">
+      <h2>${t.label}</h2>
+      <div class="nowplaying" id="np-${t.id}">Loading status...</div>
+      <select id="sel-${t.id}"></select>
+      <div class="row" style="margin-bottom:10px;">
+        <button class="primary" onclick="loadFolder('${t.id}')">Load folder</button>
+      </div>
+      <div class="row">
+        <button onclick="ctl('${t.id}','prev')">⏮ Prev</button>
+        <button onclick="ctl('${t.id}','toggle')">⏯ Play/Pause</button>
+        <button onclick="ctl('${t.id}','next')">⏭ Next</button>
+        <button class="danger" onclick="ctl('${t.id}','stop')">⏹ Stop</button>
+      </div>
+      <div class="err" id="err-${t.id}"></div>
+    </div>
+  `).join("");
+}
+
+async function loadFiles(id) {
+  try {
+    const res = await fetch(`/api/media/${id}`);
+    const data = await res.json();
+    const sel = document.getElementById(`sel-${id}`);
+    sel.innerHTML = data.files.length
+      ? data.files.map(f => `<option>${f}</option>`).join("")
+      : "<option>(no files found)</option>";
+  } catch (e) {
+    document.getElementById(`err-${id}`).textContent = "Could not list media files.";
+  }
+}
+
+async function loadFolder(id) {
+  document.getElementById(`err-${id}`).textContent = "";
+  try {
+    const res = await fetch(`/api/load/${id}`, { method: "POST" });
+    const data = await res.json();
+    if (!data.success) document.getElementById(`err-${id}`).textContent = data.message || "Load failed.";
+  } catch (e) {
+    document.getElementById(`err-${id}`).textContent = "Load request failed.";
+  }
+}
+
+async function ctl(id, action) {
+  document.getElementById(`err-${id}`).textContent = "";
+  try {
+    const res = await fetch(`/api/control/${id}/${action}`, { method: "POST" });
+    const data = await res.json();
+    if (!data.success) document.getElementById(`err-${id}`).textContent = data.message || "Command failed.";
+  } catch (e) {
+    document.getElementById(`err-${id}`).textContent = "Command request failed.";
+  }
+}
+
+function fmt(t) {
+  if (t === null || t === undefined) return "--:--";
+  const m = Math.floor(t / 60), s = Math.floor(t % 60);
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+async function pollStatus() {
+  for (const t of targets) {
+    const el = document.getElementById(`np-${t.id}`);
+    try {
+      const res = await fetch(`/api/status/${t.id}`);
+      const data = await res.json();
+      if (!data.success) { el.textContent = "Player not responding."; continue; }
+      const s = data.status;
+      if (!s.filename) { el.textContent = "Nothing loaded."; continue; }
+      const state = s.pause ? "Paused" : "Playing";
+      const pos = s.playlist_pos !== undefined ? s["playlist-pos"] : null;
+      el.textContent = `${state} — ${s.filename} (${fmt(s["time-pos"])} / ${fmt(s.duration)})`;
+    } catch (e) {
+      el.textContent = "Status unavailable.";
+    }
+  }
+}
+
+render();
+targets.forEach(t => loadFiles(t.id));
+pollStatus();
+setInterval(pollStatus, 2000);
+</script>
+</body>
+</html>

@@ -1,7 +1,10 @@
-# vtg-wifi-fallback.service
+# vtg-wifi-fallback.timer
 [Unit]
-Description=VTG Wifi Fallback Check
+Description=Run VTG wifi fallback check every 30s
 
-[Service]
-Type=oneshot
-ExecStart=/home/vtg/vtg_gen2/scripts/wifi_fallback.sh
+[Timer]
+OnBootSec=30
+OnUnitActiveSec=30
+
+[Install]
+WantedBy=timers.target

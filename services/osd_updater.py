@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Persistent OSD updater. Pushes a status overlay (IPs, web UI URL,
-error state) onto whichever mpv instance currently owns the display.
+"""Persistent OSD updater. Sets mpv's built-in status-message OSD line
+on whichever instance (video or image) currently owns the display.
 Controlled by state/osd_config.json."""
 import json
 import subprocess
@@ -34,7 +34,7 @@ def service_active(name):
     r = subprocess.run(["systemctl", "is-active", name], capture_output=True, text=True)
     return r.stdout.strip() == "active"
 
-def build_overlay_text(cfg):
+def build_status_text(cfg):
     lines = []
     if cfg.get("show_ip", True):
         lines.append(f"eth0: {get_ip('eth0') or 'not connected'}")
@@ -47,9 +47,7 @@ def build_overlay_text(cfg):
         for svc in ("vtg-video.service", "vtg-audio.service", "vtg-web.service"):
             if not service_active(svc):
                 lines.append(f"ERROR: {svc} not running")
-    if not lines:
-        return ""
-    return r"{\an7\fs28\bord2}" + r"\N".join(lines)
+    return "\n".join(lines)
 
 def find_active_mpv():
     for sock in SOCKETS:
@@ -65,11 +63,8 @@ def main():
         mpv = find_active_mpv()
         if mpv:
             try:
-                if cfg.get("enabled", True):
-                    text = build_overlay_text(cfg)
-                    mpv.osd_overlay(1, text) if text else mpv.clear_osd_overlay(1)
-                else:
-                    mpv.clear_osd_overlay(1)
+                text = build_status_text(cfg) if cfg.get("enabled", True) else ""
+                mpv.set_property("osd-status-msg", text)
             except MpvIPCError:
                 pass
             finally:

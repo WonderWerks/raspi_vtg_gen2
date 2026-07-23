@@ -8,7 +8,7 @@ exec mpv --idle=yes \
     --fullscreen \
     --no-osc \
     --no-osd-bar \
-    --osd-level-3 \
+    --osd-level=3 \
     --image-display-duration=5 \
     --loop-playlist=inf \
     --vo=gpu \

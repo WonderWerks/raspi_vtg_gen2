@@ -12,7 +12,7 @@ exec mpv --idle=yes \
     --fullscreen \
     --no-osc \
     --no-osd-bar \
-    --osd-level-3 \
+    --osd-level=3 \
     --hwdec=auto \
     --vo=gpu \
     --profile=gpu-hq \

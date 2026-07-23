@@ -29,6 +29,16 @@
 <h1>VTG Test Control</h1>
 <div id="panels"></div>
 
+<div class="panel">
+  <h2>OSD</h2>
+  <div class="row"><label><input type="checkbox" id="osd-enabled"> Enabled</label></div>
+  <div class="row"><label><input type="checkbox" id="osd-ip"> Show IP addresses</label></div>
+  <div class="row"><label><input type="checkbox" id="osd-url"> Show web UI URL</label></div>
+  <div class="row"><label><input type="checkbox" id="osd-errors"> Show errors</label></div>
+  <button class="primary" onclick="saveOsdConfig()">Save OSD settings</button>
+  <div class="status" id="status-osd"></div>
+</div>
+
 <script>
 const targets = [
   { id: "video", label: "Video" },
@@ -184,9 +194,46 @@ async function pollStatus() {
   }
 }
 
+async function loadOsdConfig() {
+  try {
+    const res = await fetch("/api/osd/config");
+    const data = await res.json();
+    const c = data.config;
+    document.getElementById("osd-enabled").checked = c.enabled;
+    document.getElementById("osd-ip").checked = c.show_ip;
+    document.getElementById("osd-url").checked = c.show_web_url;
+    document.getElementById("osd-errors").checked = c.show_errors;
+  } catch (e) {
+    document.getElementById("status-osd").textContent = "Could not load OSD config.";
+  }
+}
+
+async function saveOsdConfig() {
+  const body = {
+    enabled: document.getElementById("osd-enabled").checked,
+    show_ip: document.getElementById("osd-ip").checked,
+    show_web_url: document.getElementById("osd-url").checked,
+    show_errors: document.getElementById("osd-errors").checked
+  };
+  try {
+    const res = await fetch("/api/osd/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    const el = document.getElementById("status-osd");
+    el.textContent = data.success ? "OSD settings saved." : "Save failed.";
+    el.className = "status " + (data.success ? "ok" : "err");
+  } catch (e) {
+    document.getElementById("status-osd").textContent = "Save request failed.";
+  }
+}
+
 render();
 targets.forEach(t => loadFiles(t.id));
 pollStatus();
+loadOsdConfig();
 setInterval(pollStatus, 2000);
 </script>
 </body>

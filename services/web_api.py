@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Minimal test web UI — talks to the persistent mpv instances over IPC."""
 from pathlib import Path
+import json
 from flask import Flask, jsonify, request, send_from_directory
 from mpv_ipc import MpvIPC, MpvIPCError
 
@@ -93,6 +94,27 @@ def set_image_speed():
         return jsonify({"success": True})
     except MpvIPCError as e:
         return jsonify({"success": False, "message": str(e)}), 503
+
+STATE_DIR = MEDIA_DIR.parent / "state"
+OSD_CONFIG_PATH = STATE_DIR / "osd_config.json"
+OSD_DEFAULTS = {"enabled": True, "show_ip": True, "show_web_url": True, "show_errors": True}
+
+@app.route("/api/osd/config", methods=["GET"])
+def get_osd_config():
+    try:
+        with open(OSD_CONFIG_PATH) as f:
+            cfg = {**OSD_DEFAULTS, **json.load(f)}
+    except (FileNotFoundError, json.JSONDecodeError):
+        cfg = dict(OSD_DEFAULTS)
+    return jsonify({"success": True, "config": cfg})
+
+@app.route("/api/osd/config", methods=["POST"])
+def set_osd_config():
+    STATE_DIR.mkdir(exist_ok=True)
+    cfg = {**OSD_DEFAULTS, **(request.json or {})}
+    with open(OSD_CONFIG_PATH, "w") as f:
+        json.dump(cfg, f)
+    return jsonify({"success": True})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)

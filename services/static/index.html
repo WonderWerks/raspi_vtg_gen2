@@ -44,8 +44,12 @@
 <div id="panels"></div>
 
 <div class="panel">
-  <h2>CEC <span class="badge">not yet implemented</span></h2>
-  <div class="coming-soon">Backend not built yet — buttons below will show an error until it is.</div>
+  <h2>CEC</h2>
+  <select id="cec-device">
+    <option value="both" selected>Both HDMI ports</option>
+    <option value="hdmi1">HDMI 1</option>
+    <option value="hdmi2">HDMI 2</option>
+  </select>
   <div class="row">
     <button onclick="cecCommand('power_on')">Power On</button>
     <button onclick="cecCommand('power_off')">Power Off</button>
@@ -55,7 +59,7 @@
     <button onclick="cecCommand('volume_down')">Vol -</button>
     <button onclick="cecCommand('mute')">Mute</button>
   </div>
-  <input type="text" id="cec-custom" placeholder="Custom CEC command string">
+  <input type="text" id="cec-custom" placeholder="Custom CEC command args (e.g. --to 0 --standby)">
   <div class="row">
     <button class="primary" onclick="sendCecCustom()">Send custom command</button>
   </div>
@@ -408,21 +412,27 @@ async function saveOsdConfig() {
   }
 }
 
+function getCecDevice() {
+  return document.getElementById("cec-device").value;
+}
+
 async function cecCommand(cmd) {
+  const device = getCecDevice();
   try {
-    const res = await fetch(`/api/cec/${cmd}`, { method: "POST" });
+    const res = await fetch(`/api/cec/${device}/${cmd}`, { method: "POST" });
     const data = await res.json();
     setStatusMsg("cec", data.success ? "Command sent." : (data.message || "Command failed."), data.success);
   } catch (e) {
-    setStatusMsg("cec", "CEC not yet implemented.", false);
+    setStatusMsg("cec", "CEC request failed.", false);
   }
 }
 
 async function sendCecCustom() {
+  const device = getCecDevice();
   const value = document.getElementById("cec-custom").value;
   if (!value) { setStatusMsg("cec", "Enter a command string first.", false); return; }
   try {
-    const res = await fetch("/api/cec/custom", {
+    const res = await fetch(`/api/cec/${device}/custom`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ command: value })
@@ -430,7 +440,7 @@ async function sendCecCustom() {
     const data = await res.json();
     setStatusMsg("cec", data.success ? "Custom command sent." : (data.message || "Command failed."), data.success);
   } catch (e) {
-    setStatusMsg("cec", "CEC not yet implemented.", false);
+    setStatusMsg("cec", "CEC request failed.", false);
   }
 }
 

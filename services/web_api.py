@@ -5,6 +5,7 @@ import json
 from flask import Flask, jsonify, request, send_from_directory
 from mpv_ipc import MpvIPC, MpvIPCError
 import subprocess
+from cec_control import power_on as cec_power_on_fn, power_off as cec_power_off_fn, custom as cec_custom_fn, CEC_DEVICES
 
 def get_ip(iface):
     try:
@@ -225,5 +226,48 @@ def wifi_check_now():
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
 
+def cec_devices_for(device):
+    if device == "both":
+        return list(CEC_DEVICES.keys())
+    if device in CEC_DEVICES:
+        return [device]
+    return []
+
+def cec_aggregate(device, fn):
+    devices = cec_devices_for(device)
+    if not devices:
+        return jsonify({"success": False, "message": "Unknown device"}), 400
+    results = {d: fn(d) for d in devices}
+    ok = all(r[0] for r in results.values())
+    message = "OK" if ok else "; ".join(f"{d}: {r[1][-150:]}" for d, r in results.items() if not r[0])
+    return jsonify({"success": ok, "message": message})
+
+@app.route("/api/cec/<device>/power_on", methods=["POST"])
+def cec_power_on(device):
+    return cec_aggregate(device, cec_power_on_fn)
+
+@app.route("/api/cec/<device>/power_off", methods=["POST"])
+def cec_power_off(device):
+    return cec_aggregate(device, cec_power_off_fn)
+
+@app.route("/api/cec/<device>/custom", methods=["POST"])
+def cec_custom_route(device):
+    command = (request.json or {}).get("command", "")
+    if not command:
+        return jsonify({"success": False, "message": "No command provided"}), 400
+    return cec_aggregate(device, lambda d: cec_custom_fn(d, command))
+
+@app.route("/api/cec/<device>/volume_up", methods=["POST"])
+def cec_volume_up(device):
+    return jsonify({"success": False, "message": "Not yet validated — try the custom command box first."})
+
+@app.route("/api/cec/<device>/volume_down", methods=["POST"])
+def cec_volume_down(device):
+    return jsonify({"success": False, "message": "Not yet validated — try the custom command box first."})
+
+@app.route("/api/cec/<device>/mute", methods=["POST"])
+def cec_mute(device):
+    return jsonify({"success": False, "message": "Not yet validated — try the custom command box first."})
+    
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)

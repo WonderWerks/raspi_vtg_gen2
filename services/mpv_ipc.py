@@ -140,6 +140,12 @@ class MpvIPC:
             "playlist-pos",
             "playlist-count",
             "core-idle",
+            "loop-playlist",
+            "loop-file",
+            "display-width",
+            "display-height",
+            "display-fps",
+            "image-display-duration",
         ):
             try:
                 result[prop] = self.get_property(prop)

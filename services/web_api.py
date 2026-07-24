@@ -13,6 +13,10 @@ def get_ip(iface):
     except Exception:
         return None
 
+def service_active(name):
+    r = subprocess.run(["systemctl", "is-active", name], capture_output=True, text=True)
+    return r.stdout.strip() == "active"
+
 MEDIA_DIR = Path(__file__).resolve().parent.parent / "media"
 SOCKETS = {"video": "/tmp/vtg-display.sock", "audio": "/tmp/vtg-audio.sock", "image": "/tmp/vtg-display.sock"}
 MEDIA_FOLDERS = {"video": MEDIA_DIR / "video", "audio": MEDIA_DIR / "audio"}
@@ -156,6 +160,70 @@ def set_mute(target):
         return jsonify({"success": True})
     except MpvIPCError as e:
         return jsonify({"success": False, "message": str(e)}), 503
+
+@app.route("/api/loop/<target>", methods=["POST"])
+def set_loop(target):
+    data = request.json or {}
+    loop_type = data.get("type")
+    enabled = bool(data.get("enabled"))
+    if loop_type not in ("playlist", "file"):
+        return jsonify({"success": False, "message": "Invalid loop type"}), 400
+    prop_name = "loop-playlist" if loop_type == "playlist" else "loop-file"
+    value = "inf" if enabled else "no"
+    try:
+        mpv = get_mpv(target)
+        mpv.set_property(prop_name, value)
+        mpv.close()
+        return jsonify({"success": True})
+    except MpvIPCError as e:
+        return jsonify({"success": False, "message": str(e)}), 503
+
+SYSTEM_SERVICES = ["vtg-display.service", "vtg-audio.service", "vtg-osd.service", "vtg-wifi-fallback.timer"]
+
+@app.route("/api/errors")
+def get_errors():
+    errors = [f"{svc} not running" for svc in SYSTEM_SERVICES if not service_active(svc)]
+    return jsonify({"success": True, "errors": errors})
+
+@app.route("/api/display/info")
+def display_info():
+    try:
+        mpv = get_mpv("video")
+        w = mpv.get_property("display-width")
+        h = mpv.get_property("display-height")
+        fps = mpv.get_property("display-fps")
+        mpv.close()
+        return jsonify({"success": True, "width": w, "height": h, "fps": fps, "output": "HDMI-A-2 (auto-selected)"})
+    except MpvIPCError as e:
+        return jsonify({"success": False, "message": str(e)}), 503
+
+@app.route("/api/system/reboot", methods=["POST"])
+def system_reboot():
+    try:
+        subprocess.Popen(["sudo", "/usr/sbin/reboot"])
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+@app.route("/api/system/restart/<service>", methods=["POST"])
+def restart_service(service):
+    allowed = {"display": "vtg-display.service", "audio": "vtg-audio.service"}
+    unit = allowed.get(service)
+    if not unit:
+        return jsonify({"success": False, "message": "Unknown service"}), 400
+    try:
+        subprocess.run(["sudo", "/usr/bin/systemctl", "restart", unit], check=True, capture_output=True)
+        return jsonify({"success": True})
+    except subprocess.CalledProcessError as e:
+        return jsonify({"success": False, "message": e.stderr.decode() if e.stderr else str(e)}), 500
+
+@app.route("/api/system/wifi-check", methods=["POST"])
+def wifi_check_now():
+    try:
+        subprocess.run(["/home/vtg/vtg_gen2/services/wifi_fallback.sh"], timeout=15)
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)

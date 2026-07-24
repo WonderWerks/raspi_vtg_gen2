@@ -32,6 +32,9 @@
   .vol-row input[type=range] { flex:1; }
   .vol-row label { font-size:13px; white-space:nowrap; display:flex; align-items:center; gap:6px; }
   .coming-soon { color:#777; font-size:13px; font-style:italic; margin-bottom:10px; }
+  .error-list { font-size:13px; margin:0; padding-left:18px; }
+  .error-list li { color:#f77; margin-bottom:4px; }
+  .display-info { font-size:13px; color:#9fd; margin-bottom:10px; }
 </style>
 </head>
 <body>
@@ -70,8 +73,24 @@
 </div>
 
 <div class="panel">
-  <h2>Errors / Debugging <span class="badge">future</span></h2>
-  <div class="coming-soon">Centralized error/status log coming in a future update.</div>
+  <h2>System</h2>
+  <div class="row">
+    <button onclick="restartService('display')">Restart Display Player</button>
+    <button onclick="restartService('audio')">Restart Audio Player</button>
+  </div>
+  <div class="row">
+    <button onclick="wifiCheckNow()">Run Wifi Check Now</button>
+  </div>
+  <div class="row">
+    <button class="danger" onclick="rebootDevice()">Reboot Device</button>
+  </div>
+  <div class="status" id="status-system"></div>
+</div>
+
+<div class="panel">
+  <h2>Errors / Debugging</h2>
+  <div class="display-info" id="display-info">Loading display info...</div>
+  <div id="error-summary">Checking for errors...</div>
 </div>
 
 </div>
@@ -106,6 +125,13 @@ function render() {
         <div class="row">
           <input type="number" id="speed-${t.id}" value="5" min="1" step="1" placeholder="Seconds per image">
           <button onclick="applySpeed('${t.id}')">Set loop speed</button>
+        </div>
+      ` : ""}
+
+      ${t.id === "audio" ? `
+        <div class="row">
+          <label><input type="checkbox" id="loop-playlist-${t.id}" onchange="onLoopToggle('${t.id}','playlist')"> 🔁 Loop</label>
+          <label><input type="checkbox" id="loop-file-${t.id}" onchange="onLoopToggle('${t.id}','file')"> 🔂 Repeat One</label>
         </div>
       ` : ""}
 
@@ -206,6 +232,22 @@ async function applySpeed(id) {
   }
 }
 
+async function onLoopToggle(id, type) {
+  const checkboxId = type === "playlist" ? `loop-playlist-${id}` : `loop-file-${id}`;
+  const enabled = document.getElementById(checkboxId).checked;
+  try {
+    const res = await fetch(`/api/loop/${id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type, enabled })
+    });
+    const data = await res.json();
+    if (!data.success) setStatusMsg(id, data.message || "Loop toggle failed.", false);
+  } catch (e) {
+    setStatusMsg(id, "Loop request failed.", false);
+  }
+}
+
 let volumeDebounce = {};
 function onVolumeInput(id) {
   clearTimeout(volumeDebounce[id]);
@@ -272,6 +314,14 @@ async function pollStatus() {
       const s = data.status;
       const muteBox = document.getElementById(`mute-${t.id}`);
       if (muteBox && document.activeElement !== muteBox) muteBox.checked = !!s.mute;
+      const loopPlaylistBox = document.getElementById(`loop-playlist-${t.id}`);
+      if (loopPlaylistBox && document.activeElement !== loopPlaylistBox) {
+        loopPlaylistBox.checked = !!s["loop-playlist"] && s["loop-playlist"] !== "no";
+      }
+      const loopFileBox = document.getElementById(`loop-file-${t.id}`);
+      if (loopFileBox && document.activeElement !== loopFileBox) {
+        loopFileBox.checked = !!s["loop-file"] && s["loop-file"] !== "no";
+      }
       if (!s.filename) { el.textContent = "Nothing loaded."; continue; }
       const state = s.pause ? "Paused" : "Playing";
       el.textContent = `${state} — ${s.filename} (${fmt(s["time-pos"])} / ${fmt(s.duration)})`;
@@ -291,6 +341,33 @@ async function pollNetwork() {
     document.getElementById("topbar").textContent = parts.length ? parts.join("   |   ") : "No network detected";
   } catch (e) {
     document.getElementById("topbar").textContent = "Network info unavailable";
+  }
+}
+
+async function pollErrorsAndDisplay() {
+  try {
+    const res = await fetch("/api/errors");
+    const data = await res.json();
+    const el = document.getElementById("error-summary");
+    if (data.errors && data.errors.length) {
+      el.innerHTML = "<ul class='error-list'>" + data.errors.map(e => `<li>${e}</li>`).join("") + "</ul>";
+    } else {
+      el.textContent = "No errors.";
+    }
+  } catch (e) {
+    document.getElementById("error-summary").textContent = "Could not check errors.";
+  }
+  try {
+    const res = await fetch("/api/display/info");
+    const data = await res.json();
+    const el = document.getElementById("display-info");
+    if (data.success && data.width) {
+      el.textContent = `Output: ${data.width}x${data.height} @ ${data.fps ? data.fps.toFixed(2) : "?"}Hz — ${data.output}`;
+    } else {
+      el.textContent = "Display info unavailable.";
+    }
+  } catch (e) {
+    document.getElementById("display-info").textContent = "Display info unavailable.";
   }
 }
 
@@ -357,13 +434,46 @@ async function sendCecCustom() {
   }
 }
 
+async function restartService(service) {
+  try {
+    const res = await fetch(`/api/system/restart/${service}`, { method: "POST" });
+    const data = await res.json();
+    setStatusMsg("system", data.success ? `${service} restarted.` : (data.message || "Restart failed."), data.success);
+  } catch (e) {
+    setStatusMsg("system", "Restart request failed.", false);
+  }
+}
+
+async function wifiCheckNow() {
+  try {
+    const res = await fetch("/api/system/wifi-check", { method: "POST" });
+    const data = await res.json();
+    setStatusMsg("system", data.success ? "Wifi check run." : (data.message || "Check failed."), data.success);
+  } catch (e) {
+    setStatusMsg("system", "Wifi check request failed.", false);
+  }
+}
+
+async function rebootDevice() {
+  if (!confirm("Reboot the VTG now? This will interrupt anything currently playing.")) return;
+  try {
+    const res = await fetch("/api/system/reboot", { method: "POST" });
+    const data = await res.json();
+    setStatusMsg("system", data.success ? "Rebooting..." : (data.message || "Reboot failed."), data.success);
+  } catch (e) {
+    setStatusMsg("system", "Reboot request failed.", false);
+  }
+}
+
 render();
 targets.forEach(t => loadFiles(t.id));
 pollStatus();
 pollNetwork();
+pollErrorsAndDisplay();
 loadOsdConfig();
 setInterval(pollStatus, 2000);
 setInterval(pollNetwork, 10000);
+setInterval(pollErrorsAndDisplay, 10000);
 </script>
 </body>
 </html>

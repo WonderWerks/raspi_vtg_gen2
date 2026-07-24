@@ -44,7 +44,7 @@ def build_status_text(cfg):
         if ip:
             lines.append(f"Web UI: http://{ip}:{PORT}")
     if cfg.get("show_errors", True):
-        for svc in ("vtg-video.service", "vtg-audio.service", "vtg-web.service"):
+        for svc in ("vtg-display.service", "vtg-audio.service", "vtg-web.service"):
             if not service_active(svc):
                 lines.append(f"ERROR: {svc} not running")
     return "\n".join(lines)

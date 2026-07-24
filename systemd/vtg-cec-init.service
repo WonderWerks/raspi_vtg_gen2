@@ -1,0 +1,11 @@
+[Unit]
+Description=Configure CEC adapter as playback device
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/vtg/vtg_gen2/services/cec_init.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

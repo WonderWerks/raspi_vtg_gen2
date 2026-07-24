@@ -3,27 +3,61 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>VTG Test Control</title>
+<title>VTG Control</title>
 <style>
-  body { background:#111; color:#eee; font-family: system-ui, sans-serif; padding:24px; }
-  h1 { font-size:22px; margin-bottom:24px; }
-  .panel { background:#1c1c1c; border:1px solid #333; border-radius:10px; padding:20px; margin-bottom:20px; }
-  h2 { font-size:18px; margin:0 0 12px; }
-  .nowplaying { font-size:14px; color:#9fd; margin-bottom:14px; min-height:20px; }
-  select { width:100%; padding:8px; margin-bottom:10px; background:#222; color:#eee; border:1px solid #444; border-radius:6px; }
-  .row { display:flex; gap:8px; flex-wrap:wrap; }
-  button { flex:1; min-width:70px; padding:10px; border:none; border-radius:6px; background:#333; color:#eee; cursor:pointer; font-size:14px; }
-  button:hover { background:#444; }
+  * { box-sizing: border-box; }
+  body { background:#111; color:#eee; font-family: system-ui, sans-serif; margin:0; padding:0 0 24px; }
+  .container { max-width:600px; margin:0 auto; padding:0 16px; }
+  .topbar { background:#1a1a1a; border-bottom:1px solid #333; padding:12px 16px; font-size:13px; color:#9fd; position:sticky; top:0; z-index:10; text-align:center; }
+  h1 { font-size:20px; margin:20px 0 16px; text-align:center; }
+  .panel { background:#1c1c1c; border:1px solid #333; border-radius:10px; padding:18px; margin-bottom:16px; }
+  h2 { font-size:17px; margin:0 0 12px; display:flex; align-items:center; gap:8px; }
+  .badge { font-size:10px; padding:2px 8px; border-radius:10px; background:#333; color:#999; text-transform:uppercase; letter-spacing:0.5px; }
+  .nowplaying { font-size:13px; color:#9fd; margin-bottom:14px; min-height:18px; }
+  select, input[type=number], input[type=text] { width:100%; padding:10px; margin-bottom:10px; background:#222; color:#eee; border:1px solid #444; border-radius:6px; font-size:14px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; align-items:center; }
+  .row select, .row input[type=number] { margin-bottom:0; }
+  button { flex:1; min-width:70px; padding:12px 10px; border:none; border-radius:6px; background:#333; color:#eee; cursor:pointer; font-size:14px; }
+  button:hover:not(:disabled) { background:#444; }
+  button:disabled { opacity:0.4; cursor:not-allowed; }
   button.primary { background:#2a6; }
-  button.primary:hover { background:#3b7; }
+  button.primary:hover:not(:disabled) { background:#3b7; }
   button.danger { background:#a33; }
-  button.danger:hover { background:#b44; }
-  .err { color:#f77; font-size:13px; margin-top:8px; }
+  button.danger:hover:not(:disabled) { background:#b44; }
+  .status { font-size:12px; margin-top:8px; min-height:16px; }
+  .status.ok { color:#8c8; }
+  .status.err { color:#f77; }
+  .note { font-size:12px; color:#999; margin-bottom:10px; }
+  .vol-row { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .vol-row input[type=range] { flex:1; }
+  .vol-row label { font-size:13px; white-space:nowrap; display:flex; align-items:center; gap:6px; }
+  .coming-soon { color:#777; font-size:13px; font-style:italic; margin-bottom:10px; }
 </style>
 </head>
 <body>
-<h1>VTG Test Control</h1>
+<div class="topbar" id="topbar">Loading network info...</div>
+<div class="container">
+<h1>DIY-VTG Control</h1>
 <div id="panels"></div>
+
+<div class="panel">
+  <h2>CEC <span class="badge">not yet implemented</span></h2>
+  <div class="coming-soon">Backend not built yet — buttons below will show an error until it is.</div>
+  <div class="row">
+    <button onclick="cecCommand('power_on')">Power On</button>
+    <button onclick="cecCommand('power_off')">Power Off</button>
+  </div>
+  <div class="row">
+    <button onclick="cecCommand('volume_up')">Vol +</button>
+    <button onclick="cecCommand('volume_down')">Vol -</button>
+    <button onclick="cecCommand('mute')">Mute</button>
+  </div>
+  <input type="text" id="cec-custom" placeholder="Custom CEC command string">
+  <div class="row">
+    <button class="primary" onclick="sendCecCustom()">Send custom command</button>
+  </div>
+  <div class="status" id="status-cec"></div>
+</div>
 
 <div class="panel">
   <h2>OSD</h2>
@@ -35,9 +69,17 @@
   <div class="status" id="status-osd"></div>
 </div>
 
+<div class="panel">
+  <h2>Errors / Debugging <span class="badge">future</span></h2>
+  <div class="coming-soon">Centralized error/status log coming in a future update.</div>
+</div>
+
+</div>
+
 <script>
 const targets = [
   { id: "video", label: "Video" },
+  { id: "image", label: "Images" },
   { id: "audio", label: "Audio Test" }
 ];
 
@@ -46,53 +88,167 @@ function render() {
     <div class="panel">
       <h2>${t.label}</h2>
       <div class="nowplaying" id="np-${t.id}">Loading status...</div>
+      ${t.id === "image" ? `
+        <div class="note">Video and Images share one output — playing either one replaces what's currently showing.</div>
+        <select id="res-${t.id}" onchange="loadFiles('${t.id}')">
+          <option value="1080p">1080p images</option>
+          <option value="4k">4K images</option>
+        </select>
+      ` : ""}
+
       <select id="sel-${t.id}"></select>
-      <div class="row" style="margin-bottom:10px;">
-        <button class="primary" onclick="loadFolder('${t.id}')">Load folder</button>
+      <div class="row">
+        <button onclick="playSelected('${t.id}')">Play selected</button>
+        <button onclick="loadFolder('${t.id}')">Play folder</button>
+      </div>
+
+      ${t.id === "image" ? `
+        <div class="row">
+          <input type="number" id="speed-${t.id}" value="5" min="1" step="1" placeholder="Seconds per image">
+          <button onclick="applySpeed('${t.id}')">Set loop speed</button>
+        </div>
+      ` : ""}
+
+      ${t.id !== "image" ? `
+      <div class="vol-row">
+        <label>🔊</label>
+        <input type="range" id="vol-${t.id}" min="0" max="100" value="100" oninput="onVolumeInput('${t.id}')">
+        <label><input type="checkbox" id="mute-${t.id}" onchange="onMuteToggle('${t.id}')"> Mute</label>
+      </div>
+      ` : ""}
+
+      <div class="row">
+        <button class="primary" onclick="ctl('${t.id}','toggle')">⏯ Play/Pause</button>
+        <button class="danger" onclick="ctl('${t.id}','stop')">⏹ Stop</button>
       </div>
       <div class="row">
         <button onclick="ctl('${t.id}','prev')">⏮ Prev</button>
-        <button onclick="ctl('${t.id}','toggle')">⏯ Play/Pause</button>
         <button onclick="ctl('${t.id}','next')">⏭ Next</button>
-        <button class="danger" onclick="ctl('${t.id}','stop')">⏹ Stop</button>
       </div>
-      <div class="err" id="err-${t.id}"></div>
+
+      <div class="status" id="status-${t.id}"></div>
     </div>
   `).join("");
 }
 
+function getResolution(id) {
+  const sel = document.getElementById(`res-${id}`);
+  return sel ? sel.value : null;
+}
+
+function setStatusMsg(id, text, ok) {
+  const el = document.getElementById(`status-${id}`);
+  el.textContent = text;
+  el.className = "status " + (ok ? "ok" : "err");
+}
+
 async function loadFiles(id) {
   try {
-    const res = await fetch(`/api/media/${id}`);
+    const qs = id === "image" ? `?resolution=${getResolution(id)}` : "";
+    const res = await fetch(`/api/media/${id}${qs}`);
     const data = await res.json();
     const sel = document.getElementById(`sel-${id}`);
     sel.innerHTML = data.files.length
       ? data.files.map(f => `<option>${f}</option>`).join("")
       : "<option>(no files found)</option>";
   } catch (e) {
-    document.getElementById(`err-${id}`).textContent = "Could not list media files.";
+    setStatusMsg(id, "Could not list media files.", false);
   }
 }
 
 async function loadFolder(id) {
-  document.getElementById(`err-${id}`).textContent = "";
+  const body = { mode: "folder" };
+  if (id === "image") body.resolution = getResolution(id);
   try {
-    const res = await fetch(`/api/load/${id}`, { method: "POST" });
+    const res = await fetch(`/api/load/${id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
     const data = await res.json();
-    if (!data.success) document.getElementById(`err-${id}`).textContent = data.message || "Load failed.";
+    setStatusMsg(id, data.success ? `Playing folder (${data.count} files).` : (data.message || "Load failed."), data.success);
   } catch (e) {
-    document.getElementById(`err-${id}`).textContent = "Load request failed.";
+    setStatusMsg(id, "Load request failed.", false);
+  }
+}
+
+async function playSelected(id) {
+  const sel = document.getElementById(`sel-${id}`);
+  const filename = sel.value;
+  if (!filename) { setStatusMsg(id, "No file selected.", false); return; }
+  const body = { mode: "single", filename };
+  if (id === "image") body.resolution = getResolution(id);
+  try {
+    const res = await fetch(`/api/load/${id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    setStatusMsg(id, data.success ? `Playing: ${filename}` : (data.message || "Load failed."), data.success);
+  } catch (e) {
+    setStatusMsg(id, "Load request failed.", false);
+  }
+}
+
+async function applySpeed(id) {
+  const val = document.getElementById(`speed-${id}`).value;
+  try {
+    const res = await fetch(`/api/speed/${id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ seconds: val })
+    });
+    const data = await res.json();
+    setStatusMsg(id, data.success ? `Loop speed set to ${val}s per image.` : (data.message || "Failed."), data.success);
+  } catch (e) {
+    setStatusMsg(id, "Speed request failed.", false);
+  }
+}
+
+let volumeDebounce = {};
+function onVolumeInput(id) {
+  clearTimeout(volumeDebounce[id]);
+  volumeDebounce[id] = setTimeout(() => setVolume(id), 150);
+}
+
+async function setVolume(id) {
+  const level = document.getElementById(`vol-${id}`).value;
+  try {
+    const res = await fetch(`/api/volume/${id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ level: parseInt(level) })
+    });
+    const data = await res.json();
+    if (!data.success) setStatusMsg(id, data.message || "Volume failed.", false);
+  } catch (e) {
+    setStatusMsg(id, "Volume request failed.", false);
+  }
+}
+
+async function onMuteToggle(id) {
+  const muted = document.getElementById(`mute-${id}`).checked;
+  try {
+    const res = await fetch(`/api/mute/${id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ muted })
+    });
+    const data = await res.json();
+    if (!data.success) setStatusMsg(id, data.message || "Mute failed.", false);
+  } catch (e) {
+    setStatusMsg(id, "Mute request failed.", false);
   }
 }
 
 async function ctl(id, action) {
-  document.getElementById(`err-${id}`).textContent = "";
   try {
     const res = await fetch(`/api/control/${id}/${action}`, { method: "POST" });
     const data = await res.json();
-    if (!data.success) document.getElementById(`err-${id}`).textContent = data.message || "Command failed.";
+    if (!data.success) setStatusMsg(id, data.message || "Command failed.", false);
   } catch (e) {
-    document.getElementById(`err-${id}`).textContent = "Command request failed.";
+    setStatusMsg(id, "Command request failed.", false);
   }
 }
 
@@ -110,13 +266,27 @@ async function pollStatus() {
       const data = await res.json();
       if (!data.success) { el.textContent = "Player not responding."; continue; }
       const s = data.status;
+      const muteBox = document.getElementById(`mute-${t.id}`);
+      if (muteBox && document.activeElement !== muteBox) muteBox.checked = !!s.mute;
       if (!s.filename) { el.textContent = "Nothing loaded."; continue; }
       const state = s.pause ? "Paused" : "Playing";
-      const pos = s.playlist_pos !== undefined ? s["playlist-pos"] : null;
       el.textContent = `${state} — ${s.filename} (${fmt(s["time-pos"])} / ${fmt(s.duration)})`;
     } catch (e) {
       el.textContent = "Status unavailable.";
     }
+  }
+}
+
+async function pollNetwork() {
+  try {
+    const res = await fetch("/api/network");
+    const data = await res.json();
+    const parts = [];
+    if (data.eth0) parts.push(`eth0: ${data.eth0}`);
+    if (data.wlan0) parts.push(`wlan0: ${data.wlan0}`);
+    document.getElementById("topbar").textContent = parts.length ? parts.join("   |   ") : "No network detected";
+  } catch (e) {
+    document.getElementById("topbar").textContent = "Network info unavailable";
   }
 }
 
@@ -157,11 +327,39 @@ async function saveOsdConfig() {
   }
 }
 
+async function cecCommand(cmd) {
+  try {
+    const res = await fetch(`/api/cec/${cmd}`, { method: "POST" });
+    const data = await res.json();
+    setStatusMsg("cec", data.success ? "Command sent." : (data.message || "Command failed."), data.success);
+  } catch (e) {
+    setStatusMsg("cec", "CEC not yet implemented.", false);
+  }
+}
+
+async function sendCecCustom() {
+  const value = document.getElementById("cec-custom").value;
+  if (!value) { setStatusMsg("cec", "Enter a command string first.", false); return; }
+  try {
+    const res = await fetch("/api/cec/custom", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ command: value })
+    });
+    const data = await res.json();
+    setStatusMsg("cec", data.success ? "Custom command sent." : (data.message || "Command failed."), data.success);
+  } catch (e) {
+    setStatusMsg("cec", "CEC not yet implemented.", false);
+  }
+}
+
 render();
 targets.forEach(t => loadFiles(t.id));
 pollStatus();
+pollNetwork();
 loadOsdConfig();
 setInterval(pollStatus, 2000);
+setInterval(pollNetwork, 10000);
 </script>
 </body>
 </html>

@@ -112,7 +112,7 @@ function render() {
       ${t.id !== "image" ? `
       <div class="vol-row">
         <label>🔊</label>
-        <input type="range" id="vol-${t.id}" min="0" max="100" value="100" oninput="onVolumeInput('${t.id}')">
+        <input type="range" id="vol-${t.id}" min="${t.id === 'video' ? 50 : 0}" max="100" value="100" oninput="onVolumeInput('${t.id}')">
         <label><input type="checkbox" id="mute-${t.id}" onchange="onMuteToggle('${t.id}')"> Mute</label>
       </div>
       ` : ""}
@@ -246,7 +246,11 @@ async function ctl(id, action) {
   try {
     const res = await fetch(`/api/control/${id}/${action}`, { method: "POST" });
     const data = await res.json();
-    if (!data.success) setStatusMsg(id, data.message || "Command failed.", false);
+    if (!data.success) {
+      setStatusMsg(id, data.message || "Command failed.", false);
+    } else {
+      setStatusMsg(id, "", true);
+    }
   } catch (e) {
     setStatusMsg(id, "Command request failed.", false);
   }

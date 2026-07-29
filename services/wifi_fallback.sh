@@ -6,6 +6,9 @@ WLAN_DEV="wlan0"
 RETRY_STATE_FILE="/tmp/vtg_wifi_last_retry"
 RETRY_INTERVAL=300   # only re-check primary every 5 min while on fallback, to stop flapping
 
+# Clear a stuck/hung connection attempt before doing anything else
+nmcli -t -f GENERAL.STATE device show "$WLAN_DEV" | grep -q "connecting" && nmcli device disconnect "$WLAN_DEV"
+
 active_con=$(nmcli -t -f NAME,DEVICE connection show --active | awk -F: -v dev="$WLAN_DEV" '$2==dev {print $1}')
 
 if [ "$active_con" = "$TARGET_SSID" ]; then
@@ -22,7 +25,7 @@ if [ "$active_con" = "$FALLBACK_CON" ]; then
     echo "$now" > "$RETRY_STATE_FILE"
 fi
 
-timeout 15 nmcli connection up "$TARGET_SSID" >/dev/null 2>&1
+if timeout 15 nmcli connection up "$TARGET_SSID" >/dev/null 2>&1; then
     rm -f "$RETRY_STATE_FILE"
     exit 0
 fi

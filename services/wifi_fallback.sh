@@ -22,7 +22,7 @@ if [ "$active_con" = "$FALLBACK_CON" ]; then
     echo "$now" > "$RETRY_STATE_FILE"
 fi
 
-if nmcli connection up "$TARGET_SSID" >/dev/null 2>&1; then
+timeout 15 nmcli connection up "$TARGET_SSID" >/dev/null 2>&1
     rm -f "$RETRY_STATE_FILE"
     exit 0
 fi
